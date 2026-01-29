@@ -13,24 +13,24 @@ HTML_TEMPLATE = '''
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Descargador Universal</title>
+    <title>Descargador IPv4</title>
     <style>
-        body { font-family: sans-serif; background: #000; color: #fff; text-align: center; padding: 40px; }
-        .box { border: 1px solid #fff; padding: 20px; display: inline-block; background: #222; border-radius: 10px;}
+        body { font-family: sans-serif; background: #0a0a0a; color: #00ff00; text-align: center; padding: 40px; }
+        .box { border: 2px solid #00ff00; padding: 20px; display: inline-block; background: #000; border-radius: 10px;}
         input, button { padding: 10px; margin: 10px; width: 80%; }
-        button { background: #fff; color: #000; font-weight: bold; cursor: pointer; border: none; }
+        button { background: #00ff00; color: #000; font-weight: bold; cursor: pointer; border: none; }
     </style>
     <script>
         function cargar() {
-            document.getElementById('btn').innerText = "BAJANDO...";
+            document.getElementById('btn').innerText = "INTENTANDO CONEXIÓN IPv4...";
             document.getElementById('btn').disabled = true;
         }
     </script>
 </head>
 <body>
     <div class="box">
-        <h1>MODO IPHONE</h1>
-        <p>Este modo es más compatible con servidores.</p>
+        <h1>MODO IPv4</h1>
+        <p>Forzando conexión estándar para evitar bloqueos.</p>
         <form action="/descargar" method="post" onsubmit="cargar()">
             <input type="text" name="url" placeholder="Link de YouTube..." required>
             <button type="submit" id="btn">DESCARGAR</button>
@@ -47,52 +47,36 @@ def index():
 @app.route('/descargar', methods=['POST'])
 def descargar():
     url = request.form.get('url')
-    
-    # Limpiamos
-    output = '/tmp/video_descargado.mp4'
+    output = '/tmp/video.mp4'
     if os.path.exists(output): os.remove(output)
 
-    log("INICIANDO MODO IOS...")
+    log("INICIANDO MODO IPv4...")
     
     ydl_opts = {
         'outtmpl': output,
-        'cookiefile': 'cookies.txt',
+        'cookiefile': 'cookies.txt', # TUS COOKIES SON VITALES AQUÍ
         'noplaylist': True,
         
-        # CAMBIO 1: Pedimos "best" a secas.
-        # "best" busca el mejor archivo ÚNICO (video+audio juntos).
-        # Esto evita el error de "Requested format not available" y ahorra RAM.
-        'format': 'best', 
-        
-        # CAMBIO 2: Simulamos ser un iPhone (iOS)
-        # Los iPhones suelen recibir formatos más compatibles (.mp4/.m3u8) que Android.
-        'extractor_args': {'youtube': {'player_client': ['ios']}},
+        # --- EL ARREGLO ---
+        'force_ipv4': True,  # Obliga a usar la red compatible
+        'format': 'best[ext=mp4]/best', # Busca archivo único (ahorra RAM)
+        'socket_timeout': 30,
     }
 
     try:
-        log(f"Intentando: {url}")
+        log(f"Descargando: {url}")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.extract_info(url, download=True)
             
-        if os.path.exists(output) and os.path.getsize(output) > 0:
-            log("¡CONSEGUIDO!")
+        if os.path.exists(output) and os.path.getsize(output) > 1024:
+            log("¡ÉXITO! Archivo descargado.")
             return send_file(output, as_attachment=True, download_name='video.mp4')
         else:
-            # Plan B: Si falla el nombre exacto, buscamos cualquier archivo en /tmp
-            import glob
-            archivos = glob.glob('/tmp/*')
-            # Filtramos para no agarrar cookies.txt u otros
-            archivos_video = [f for f in archivos if len(f) > 10 and not f.endswith('.txt')]
-            
-            if archivos_video:
-                log(f"Encontrado archivo alternativo: {archivos_video[0]}")
-                return send_file(archivos_video[0], as_attachment=True, download_name='video.mp4')
-            
-            return "<h1>FALLO:</h1> <p>Parece que el video se descargó pero no lo encuentro con el nombre esperado.</p>"
+            return "<h1>ERROR:</h1> <p>YouTube aceptó la conexión pero envió un archivo vacío. Tus cookies pueden estar quemadas.</p>"
 
     except Exception as e:
         log(f"ERROR: {str(e)}")
-        return f"<h1>ERROR:</h1> <p>{str(e)}</p>"
+        return f"<h1>ERROR TÉCNICO:</h1> <p>{str(e)}</p>"
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
