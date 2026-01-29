@@ -1,39 +1,40 @@
 import os
-import traceback
+import sys
 from flask import Flask, render_template_string, request, send_file
 import yt_dlp
 
 app = Flask(__name__)
+
+# Función para que los mensajes salgan en la pantalla negra de Render
+def log(mensaje):
+    print(f"--> {mensaje}", file=sys.stderr)
 
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Descargador Ligero</title>
+    <title>Test Ligero</title>
     <style>
-        body { font-family: sans-serif; background: #121212; color: white; text-align: center; padding: 40px; }
-        .box { background: #1e1e1e; padding: 40px; border-radius: 15px; display: inline-block; width: 100%; max-width: 500px; }
-        input, select, button { width: 100%; padding: 15px; margin: 10px 0; border-radius: 5px; border: none; }
-        button { background: #007bff; color: white; font-weight: bold; cursor: pointer; }
+        body { font-family: sans-serif; background: #000; color: #0f0; text-align: center; padding: 40px; }
+        .box { border: 2px solid #0f0; padding: 20px; display: inline-block; }
+        input, button { padding: 10px; margin: 10px; }
+        button { background: #0f0; color: #000; font-weight: bold; cursor: pointer; }
     </style>
     <script>
         function cargar() {
-            document.getElementById('btn').innerText = "PROCESANDO...";
+            document.getElementById('btn').innerText = "TRABAJANDO (Mira los Logs en Render)...";
             document.getElementById('btn').disabled = true;
         }
     </script>
 </head>
 <body>
     <div class="box">
-        <h1>Descargador (Modo Seguro)</h1>
+        <h1>MODO DIAGNÓSTICO</h1>
+        <p>Este modo descarga en baja calidad para probar la conexión.</p>
         <form action="/descargar" method="post" onsubmit="cargar()">
-            <input type="text" name="url" placeholder="Enlace de YouTube..." required>
-            <select name="calidad">
-                <option value="video">Video (720p/MP4 - Rápido)</option>
-                <option value="audio">Solo Audio (MP3)</option>
-            </select>
-            <button type="submit" id="btn">DESCARGAR</button>
+            <input type="text" name="url" placeholder="Link de YouTube..." required>
+            <button type="submit" id="btn">PROBAR DESCARGA</button>
         </form>
     </div>
 </body>
@@ -47,42 +48,35 @@ def index():
 @app.route('/descargar', methods=['POST'])
 def descargar():
     url = request.form.get('url')
-    calidad = request.form.get('calidad')
     
-    # Usamos /tmp para descargas temporales
-    output_path = '/tmp/%(title)s.%(ext)s'
+    # RUTA TEMPORAL
+    output = '/tmp/prueba.mp4'
+    if os.path.exists(output):
+        os.remove(output)
 
+    log("INICIANDO DESCARGA...")
+    
     ydl_opts = {
-        'outtmpl': output_path,
-        'cookiefile': 'cookies.txt', # Intenta usar cookies si existen
+        'outtmpl': output,
+        'cookiefile': 'cookies.txt',
         'noplaylist': True,
-        'restrictfilenames': True, # Evita nombres con caracteres raros
+        # ESTO ES CLAVE: Bajamos la PEOR calidad para ver si funciona sin gastar RAM
+        'format': 'worst', 
     }
 
-    if calidad == 'audio':
-        ydl_opts['format'] = 'bestaudio/best'
-        ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3'}]
-    else:
-        # TRUCO PARA QUE NO EXPLOTE LA RAM:
-        # Pedimos el mejor mp4 que NO necesite unir video+audio (suele ser 720p)
-        ydl_opts['format'] = 'best[ext=mp4]/best'
-
     try:
+        log(f"Intentando descargar: {url}")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
+            ydl.extract_info(url, download=True)
             
-            # Corrección de nombre para audio
-            if calidad == 'audio':
-                base = os.path.splitext(filename)[0]
-                filename = base + ".mp3"
-
-            return send_file(filename, as_attachment=True)
+        log("DESCARGA COMPLETADA EN EL SERVIDOR")
+        log("ENVIANDO AL USUARIO...")
+        
+        return send_file(output, as_attachment=True, download_name='video_prueba.mp4')
 
     except Exception as e:
-        # Esto imprime el error real en tu pantalla en vez del "Internal Server Error"
-        error_msg = traceback.format_exc()
-        return f"<h3>Ocurrió un error (Muestrale esto al técnico):</h3><pre>{error_msg}</pre>"
+        log(f"ERROR FATAL: {str(e)}")
+        return f"<h1>FALLO:</h1> <p>{str(e)}</p>"
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
