@@ -19,14 +19,14 @@ HTML_TEMPLATE = '''
     </style>
     <script>
         function cargar() {
-            document.getElementById('btn').innerText = "PROCESANDO EN LA NUBE...";
+            document.getElementById('btn').innerText = "PROCESANDO (NO CIERRES)...";
             document.getElementById('btn').disabled = true;
         }
     </script>
 </head>
 <body>
     <div class="box">
-        <h1>Descargador Web</h1>
+        <h1>Descargador Web (con Cookies)</h1>
         <form action="/descargar" method="post" onsubmit="cargar()">
             <input type="text" name="url" placeholder="Enlace de YouTube..." required>
             <select name="calidad">
@@ -49,11 +49,13 @@ def descargar():
     url = request.form.get('url')
     calidad = request.form.get('calidad')
     
-    # En la nube usamos /tmp porque no tenemos carpeta de usuario
+    # OPCIONES DE DESCARGA
     ydl_opts = {
         'outtmpl': '/tmp/%(title)s.%(ext)s',
         'noplaylist': True,
-        # Ya no ponemos ffmpeg_location porque Docker lo instalará en el sistema
+        'cookiefile': 'cookies.txt',  # <--- ¡ESTA ES LA LÍNEA MÁGICA!
+        # Trucos anti-bloqueo extra:
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
     }
 
     if calidad == 'audio':
@@ -68,10 +70,9 @@ def descargar():
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
             base = os.path.splitext(filename)[0]
-            # Ajuste de extensiones
+            
             final = base + (".mp3" if calidad == 'audio' else ".mp4")
             
-            # Buscar si quedó como mkv o webm por seguridad
             if not os.path.exists(final):
                 for f in os.listdir('/tmp'):
                     if f.startswith(os.path.basename(base)):
@@ -80,9 +81,8 @@ def descargar():
 
             return send_file(final, as_attachment=True)
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error de YouTube: {str(e)} <br> Intenta actualizar el archivo cookies.txt en GitHub."
 
 if __name__ == '__main__':
-    # Esto permite que Render asigne el puerto automáticamente
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
